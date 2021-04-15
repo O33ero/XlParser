@@ -110,7 +110,7 @@ if __name__ == "__main__":
                         day = sheet.col_values(col - 1, start_rowx=3 + 18 * k, end_rowx=21 + 18 * k)
                         groups_shedule[find.group(0)][k] = day
                     
-                    day = sheet.col_values(col, start_rowx=93, end_rowx=105)
+                    day = sheet.col_values(col - 1, start_rowx=93, end_rowx=105)
                     groups_shedule[find.group(0)][5] = day
                     
                 elif now_tag == None: # Дефолтный обработчик
