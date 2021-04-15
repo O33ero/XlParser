@@ -19,6 +19,11 @@ special_tags = [ # Теги, для которых предусмотрена с
     "маг"        # Магистратура
 ]
 
+substitute_lessons = {
+    r"Физическая культура и спорт" : "Физ-ра",
+    r"Иностранный язык" : "Ин.яз."
+}
+
 def check_tags(tags, line):
     '''
     Поиск в строке одного из списка тегов. В случае нахождения тега, возвращает строку с этим тегом,
@@ -61,23 +66,37 @@ def get_xlfiles(filename="links.txt"):
             with open("./xl/" + filename[0], "wb") as f:
                 f.write(res.content)
 
-def parse_xlfiles(xlfilename, block_tags=[], special_tags=[]):
+def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons=[]):
     '''
     Вытаскивает из xl-таблиц все группы и их расписание. Возвращает словарь dic[group]= [[Monday], [Tuesday], [Wednesday]...];\n
-    Возвращает None если имя файла имеет block_tags.
-    Также имеет обработчики для special_tags. Если special_tag не найден, то используется стандартный обработчик. \n
+    Возвращает None если имя файла имеет block_tags. Также имеет обработчики для special_tags. Если special_tag не найден, 
+    то используется стандартный обработчик. Все предметы заменяются на \n
     !!! Функция очень времязатратная, не рекомендуется вызывать её при каждом запросе к базе !!!
     '''
 
 
 
+    def __antidot(line): # Отчистка от плохих символов
+        line = re.sub(r" {2,}", " ", line)
+        line = re.sub(r"\…+.*", "", line)
+        line = re.sub(r"\n", " ", line)
+        line = re.sub(r"\t", "", line)
+        return line
+
+    def __substitute(line): # Замена длинных обозначений на короткие
+        nonlocal substitute_lessons
+        for i in substitute_lessons:
+            line = re.sub(i, substitute_lessons[i], line)
+        return line
 
     def __default_handler(): # Стандартный обработчик 
         nonlocal sheet, groups_shedule, find, col
         for k in range(6): 
             day = sheet.col_values(col - 1, start_rowx=3 + 12 * k, end_rowx=15 + 12 * k)
+            pass
             for i in range(len(day)):
-                day[i] = re.sub(r"\n", " ", day[i])
+                day[i] = __antidot(day[i])
+                day[i] = __substitute(day[i])
             groups_shedule[find.group(1)][k] = day
 
     def __mag_handler(): # Обработчик магистров
@@ -86,13 +105,16 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[]):
         for k in range(5): 
             day = sheet.col_values(col - 1, start_rowx=3 + 18 * k, end_rowx=21 + 18 * k)
             for i in range(len(day)):
-                day[i] = re.sub(r"\n", " ", day[i])
+                day[i] = __antidot(day[i])
+                day[i] = __substitute(day[i])
             groups_shedule[find.group(1)][k] = day
         day = sheet.col_values(col - 1, start_rowx=93, end_rowx=105)
         for i in range(len(day)):
-                day[i] = re.sub(r"\n", " ", day[i])
+            day[i] = __antidot(day[i])
+            day[i] = __substitute(day[i])
         groups_shedule[find.group(1)][5] = day
 
+    
 
 
 
@@ -147,14 +169,14 @@ if __name__ == "__main__":
     link_MireaShedule = "https://www.mirea.ru/schedule/"
     links_file = "links.txt"
 
-    get_links(link_MireaShedule, links_file)
+    # get_links(link_MireaShedule, links_file)
     get_xlfiles(links_file)
 
     
     full_groups_shedule = {}
     for filename in os.listdir("./xl"):
         # * Полный список групп с расписанием * #
-        groups_shedule = parse_xlfiles(filename, block_tags, special_tags)
+        groups_shedule = parse_xlfiles(filename, block_tags, special_tags, substitute_lessons)
         if groups_shedule == None:
             continue
 
