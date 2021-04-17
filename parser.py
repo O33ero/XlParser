@@ -114,8 +114,14 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
                 type_lesson[i] = _antidot(type_lesson[i])
                 audit_lesson[i] = _antidot(audit_lesson[i])
             
+            evenodd = 1
             for i in range(len(day_lesson)):
-                day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i]) # Объединяем все в один кортеж
+                if evenodd % 2 == 0:
+                    eo = "EVEN"
+                else:
+                    eo = "ODD"
+                day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i], eo) # Объединяем все в один кортеж
+                evenodd += 1
             groups_shedule[find.group(1)][k] = day_lesson
 
 
@@ -123,7 +129,6 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
 
     def _mag_handler(): # Обработчик магистров
         nonlocal sheet, groups_shedule, find, col
-        modified_day = []
         for k in range(5): 
             day_lesson = sheet.col_values(col - 1, start_rowx=3 + 18 * k, end_rowx=21 + 18 * k) # Делаем срез предметов
             type_lesson = sheet.col_values(col, start_rowx=3 + 18 * k, end_rowx=21 + 18 * k) # Делаем срез типа заняний (пр, лекция, лаб)
@@ -135,8 +140,14 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
                 type_lesson[i] = _antidot(type_lesson[i])
                 audit_lesson[i] = _antidot(audit_lesson[i])
             
+            evenodd = 1
             for i in range(len(day_lesson)):
-                day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i]) # Объединяем все в один кортеж
+                if evenodd % 2 == 0:
+                    eo = "EVEN"
+                else:
+                    eo = "ODD"
+                day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i], eo) # Объединяем все в один кортеж
+                evenodd += 1
             
             groups_shedule[find.group(1)][k] = day_lesson
         
@@ -149,8 +160,15 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             day_lesson[i] = _substitute(day_lesson[i])
             type_lesson[i] = _antidot(type_lesson[i])
             audit_lesson[i] = _antidot(audit_lesson[i])
+        
+        evenodd = 1
         for i in range(len(day_lesson)):
-            day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i]) # Объединяем все в один кортеж
+            if evenodd % 2 == 0:
+                eo = "EVEN"
+            else:
+                eo = "ODD"
+            day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i], eo) # Объединяем все в один кортеж
+            evenodd += 1
         groups_shedule[find.group(1)][5] = day_lesson
 
     
@@ -211,29 +229,6 @@ def convert_in_postgres(group_schedule, connect):
     '''
     global ident
     cursor = connect.cursor()
-    # for key in group_schedule.keys():
-
-    #     idn = str(ident)
-    #     grp = "\'" + key + "\'"
-
-    #     mnd = '\'{\"' + '\",\"'.join(group_schedule[key][0]) + '\"}\''
-    #     tsd = '\'{\"' + '\",\"'.join(group_schedule[key][1]) + '\"}\''
-    #     wdn = '\'{\"' + '\",\"'.join(group_schedule[key][2]) + '\"}\''
-    #     thr = '\'{\"' + '\",\"'.join(group_schedule[key][3]) + '\"}\''
-    #     frd = '\'{\"' + '\",\"'.join(group_schedule[key][4]) + '\"}\''
-    #     std = '\'{\"' + '\",\"'.join(group_schedule[key][5]) + '\"}\''
-         
-
-
-    #     cursor.execute(
-    #         f'''
-    #         INSERT INTO SCHEDULE (ID,GRP,MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAYE,SATURDAY)
-    #         VALUES({idn},{grp},{mnd},{tsd},{wdn},{thr},{frd},{std})
-    #         '''
-    #     )
-    #     ident += 1
-    #     connect.commit()
-
     days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
     days_iter = iter(days)
 
@@ -241,16 +236,17 @@ def convert_in_postgres(group_schedule, connect):
         days_iter = iter(days)
         for day in group_schedule[group]:
             day_now = next(days_iter)
-            for lessons in day:
+            for lesson_info in day:
+                lesson, typ, audit, even = lesson_info
                 idn = str(ident)
                 cursor.execute(
                     f'''
-                    INSERT INTO SCHEDULE (ID,GRP,DAY,LESSON)
-                    VALUES({idn},'{group}','{day_now}','{lessons}')
+                    INSERT INTO SCHEDULE (ID,GRP,DAY,LESSON,TYPE,AUDIT,EVEN)
+                    VALUES({idn},'{group}','{day_now}','{lesson}','{typ}','{audit}','{even}')
                     '''
                 )
                 ident += 1
-                connect.commit()
+                # connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
 
 
 
@@ -271,19 +267,19 @@ if __name__ == "__main__":
     link_MireaShedule = "https://www.mirea.ru/schedule/"
     links_file = "links.txt"
 
-    get_links(link_MireaShedule, links_file)
-    get_xlfiles(links_file)
+    # get_links(link_MireaShedule, links_file)
+    # get_xlfiles(links_file)
 
     
     full_groups_shedule = {}
 
-    # con = psycopg2.connect(
-    #     database="schedule", 
-    #     user="postgres", 
-    #     password="superpassword", 
-    #     host="localhost", 
-    #     port="5432"
-    #     )
+    con = psycopg2.connect(
+        database="schedule", 
+        user="postgres", 
+        password="superpassword", 
+        host="localhost", 
+        port="5432"
+        )
     ident = 0
 
     for filename in os.listdir("./xl"):
@@ -294,7 +290,7 @@ if __name__ == "__main__":
 
         # * Записываем расписание в джсон * #
         convert_in_json(groups_shedule, filename[:-5] + ".json")
-        # convert_in_postgres(groups_shedule, con)
+        convert_in_postgres(groups_shedule, con)
 
         print("filename=" + filename, "Complete!", sep=" ")
 
@@ -307,8 +303,8 @@ if __name__ == "__main__":
         json.dump(full_groups_shedule, f, sort_keys=True, indent=4, ensure_ascii=False)
 
 
-    # con.commit()
-    # con.close()
+    con.commit()
+    con.close()
 
 
     pass
