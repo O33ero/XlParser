@@ -35,6 +35,10 @@ def check_tags(tags, line):
             return i
     return None
 
+
+
+
+
 def get_links(link, filename="links.txt"):
     '''
     Достает с html-страницы все ссылки формата " http:\/\/ ... .xlsx "
@@ -50,6 +54,10 @@ def get_links(link, filename="links.txt"):
             find = re.findall(template_link, res.text)
             for link in find:
                 f.write(link[0] + "\n")
+
+
+
+
 
 def get_xlfiles(filename="links.txt"):
     '''
@@ -73,6 +81,17 @@ def get_xlfiles(filename="links.txt"):
                 with open("./xl/" + filename[0], "wb") as f:
                     f.write(res.content)
 
+
+
+
+
+
+
+
+
+
+
+
 def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons=[]):
     '''
     Вытаскивает из xl-таблиц все группы и их расписание. Возвращает словарь dic[group]= [[Monday], [Tuesday], [Wednesday]...];\n
@@ -85,12 +104,13 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
 
     # --- Утильные функции --- #
 
-    def _antidot(line): # Отчистка от плохих символов
+    def _antidot(line, mod=1): # Отчистка от плохих символов
         try:
+            if mod == 0:
+                line = re.sub(r"\n", " ", line)
+            line = re.sub(r"\t", "", line)
             line = re.sub(r" {2,}", " ", line)
             line = re.sub(r"\…+.*", "", line)
-            line = re.sub(r"\n", " ", line)
-            line = re.sub(r"\t", "", line)
         except:
             pass
         return line
@@ -101,6 +121,90 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             line = re.sub(i, substitute_lessons[i], line)
         return line
 
+    def _weekslicer(day_lessons): # Обработчик влючения/исключения недель
+        lesson, typ, audit, order, even, week = day_lessons
+        if lesson == "":
+            return day_lessons
+        arr = []
+        find = re.match(r"кр. (.*) н.", lesson) # кр. 12,15 н. 
+        if find != None:
+            try:
+                find = re.findall(r"\d{1,2}", find.group(1))
+                for each in find:
+                    week.remove(int(each))
+            except:
+                pass
+            finally:
+                return (lesson, typ, audit, order, even, week)
+
+        find = re.match(r"(.*) н.", lesson) # 12,15 н.
+        if find != None:
+            try:
+                f = re.findall(r"(\d{1,2})-(\d{1,2})", find.group(1))
+                for pair in f:
+                    for i in range(int(pair[0]), int(pair[1]) + 1):
+                        arr.append(i)
+            except:
+                pass
+            try:
+                f = re.findall(r"\d{1,2}", find.group(1))
+                for each in f:
+                    if int(each) not in arr:
+                        arr.append(int(each))
+            except:
+                pass
+            finally:
+                week = arr
+                week.sort()
+                return (lesson, typ, audit, order, even, week)
+            
+        return day_lessons # Ничего не нашли
+
+    def _recurparser(line):
+        try:
+            find = re.search(r"(.*)\n(.*)", line)
+        except:
+            find = None
+        result = []
+
+        if find == None:
+            result.append(line)
+            return result
+        else:
+            result.append(find.group(1))
+            result.extend(_recurparser(find.group(2)))
+            return result
+
+    def _twiceschedule(obj): # Обрабочкик двойных объектов на одном слоте
+        new_objs = []
+        
+        lesson = obj[0]
+        typ = obj[1]
+        audit = obj[2]
+
+        lesson_arr = _recurparser(lesson)
+
+        if len(lesson_arr) == 1:
+            obj[2] = _antidot(obj[2], 0)
+            new_objs.append(obj)
+        else:
+            typ_arr = _recurparser(typ)
+            audit_arr = _recurparser(audit)
+            for i in range(len(lesson_arr)):
+                lesson = lesson_arr[i]
+                try:
+                    typ = typ_arr[i]
+                except:
+                    typ = typ_arr[len(typ_arr) - 1]
+                
+                try:
+                    audit = audit_arr[i]
+                except:
+                    audit = audit_arr[len(audit_arr) - 1]
+
+                new_objs.append((lesson, typ, audit, obj[3], obj[4], obj[5]))
+        return new_objs
+
     def _default_handler(): # Стандартный обработчик 
         nonlocal sheet, groups_shedule, find, col
         for k in range(6): 
@@ -109,23 +213,34 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             audit_lesson = sheet.col_values(col + 2, start_rowx=3 + 12 * k, end_rowx=15 + 12 * k) # Делаем срез аудиторий
 
             for i in range(len(day_lesson)): # Убираем плохие символы 
-                day_lesson[i] = _antidot(day_lesson[i])
+                day_lesson[i] = _antidot(day_lesson[i], 1)
                 day_lesson[i] = _substitute(day_lesson[i])
                 type_lesson[i] = _antidot(type_lesson[i])
                 audit_lesson[i] = _antidot(audit_lesson[i])
             
             evenodd = 1
+            order = 1
+            week = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            schedule = []
             for i in range(len(day_lesson)):
+                lesson = day_lesson[i]
+                typ = type_lesson[i]
+                audit = audit_lesson[i] 
                 if evenodd % 2 == 0:
                     eo = "EVEN"
                 else:
                     eo = "ODD"
-                day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i], eo) # Объединяем все в один кортеж
+                obj = [lesson, typ, audit, int(order), eo, week.copy()] # Объединяем все в один кортеж
+                
+                obj_arr = _twiceschedule(obj)
+                for i in range(len(obj_arr)):
+                    obj_arr[i] = _weekslicer(obj_arr[i])
+
+                schedule.extend(obj_arr) 
                 evenodd += 1
-            groups_shedule[find.group(1)][k] = day_lesson
-
-
-
+                order += 0.5
+            
+            groups_shedule[find.group(1)][k] = schedule
 
     def _mag_handler(): # Обработчик магистров
         nonlocal sheet, groups_shedule, find, col
@@ -141,15 +256,28 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
                 audit_lesson[i] = _antidot(audit_lesson[i])
             
             evenodd = 1
+            order = 1
+            week = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            schedule = []
             for i in range(len(day_lesson)):
+                lesson = day_lesson[i]
+                typ = type_lesson[i]
+                audit = audit_lesson[i] 
                 if evenodd % 2 == 0:
                     eo = "EVEN"
                 else:
                     eo = "ODD"
-                day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i], eo) # Объединяем все в один кортеж
+                obj = [lesson, typ, audit, int(order), eo, week.copy()] # Объединяем все в один кортеж
+                
+                obj_arr = _twiceschedule(obj)
+                for each in obj_arr:
+                    each = _weekslicer(each)
+
+                schedule.extend(obj_arr) 
                 evenodd += 1
+                order += 0.5
             
-            groups_shedule[find.group(1)][k] = day_lesson
+            groups_shedule[find.group(1)][k] = schedule
         
         # Делаем срез для субботы
         day_lesson = sheet.col_values(col - 1, start_rowx=93, end_rowx=105)
@@ -163,13 +291,23 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
         
         evenodd = 1
         for i in range(len(day_lesson)):
+            lesson = day_lesson[i]
+            typ = type_lesson[i]
+            audit = audit_lesson[i] 
             if evenodd % 2 == 0:
                 eo = "EVEN"
             else:
                 eo = "ODD"
-            day_lesson[i] = (day_lesson[i], type_lesson[i], audit_lesson[i], eo) # Объединяем все в один кортеж
+            obj = [lesson, typ, audit, int(order), eo, week.copy()] # Объединяем все в один кортеж
+            
+            obj_arr = _twiceschedule(obj)
+            for each in obj_arr:
+                each = _weekslicer(each)
+
+            schedule.extend(obj_arr) 
             evenodd += 1
-        groups_shedule[find.group(1)][5] = day_lesson
+            order += 0.5
+        groups_shedule[find.group(1)][5] = schedule
 
     
 
@@ -237,16 +375,21 @@ def convert_in_postgres(group_schedule, connect):
         for day in group_schedule[group]:
             day_now = next(days_iter)
             for lesson_info in day:
-                lesson, typ, audit, even = lesson_info
+                lesson, typ, audit, order, even, week = lesson_info
+                
+                strweek = [str(i) for i in week]
+                strweek = "{" + ",".join(strweek) + "}"
+                
+                
                 idn = str(ident)
                 cursor.execute(
                     f'''
-                    INSERT INTO SCHEDULE (ID,GRP,DAY,LESSON,TYPE,AUDIT,EVEN)
-                    VALUES({idn},'{group}','{day_now}','{lesson}','{typ}','{audit}','{even}')
+                    INSERT INTO SCHEDULE (ID,GRP,DAY,LESSON,TYPE,AUDIT,ORD,EVEN,WEEK)
+                    VALUES({idn},'{group}','{day_now}','{lesson}','{typ}','{audit}','{order}','{even}','{strweek}')
                     '''
                 )
                 ident += 1
-                # connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
+                connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
 
 
 
@@ -294,13 +437,13 @@ if __name__ == "__main__":
 
         print("filename=" + filename, "Complete!", sep=" ")
 
-        full_groups_shedule = {**groups_shedule, **full_groups_shedule}                   # Можно сохранять полную базу, которую можно слить в один ОГРОМНЫЙ файл
+        # full_groups_shedule = {**groups_shedule, **full_groups_shedule}                   # Можно сохранять полную базу, которую можно слить в один ОГРОМНЫЙ файл
         groups_shedule.clear() 
 
 
 
-    with open("./json/AllInOne.json", "w", encoding="utf-8") as f:                        # Создание одной большой базы
-        json.dump(full_groups_shedule, f, sort_keys=True, indent=4, ensure_ascii=False)
+    # with open("./json/AllInOne.json", "w", encoding="utf-8") as f:                        # Создание одной большой базы
+    #     json.dump(full_groups_shedule, f, sort_keys=True, indent=4, ensure_ascii=False)
 
 
     con.commit()
