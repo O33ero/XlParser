@@ -2,10 +2,7 @@
 import psycopg2
 from psycopg2 import Error
 
-cur = None # Cursor
-con = None # Connection
 def connect(): # Соединение с базой
-    global con
     con = psycopg2.connect(
         database="schedule", 
         user="postgres", 
@@ -13,9 +10,11 @@ def connect(): # Соединение с базой
         host="localhost", 
         port="5432"
     )
-    global cur
-    cur = con.cursor()
-    print("Database opened successfully, cursor is now in 'cur' varible")
+    print("Database opened successfully")
+    return con
+
+def cursor(con):
+    return con.cursor()
 
 
 def init_table(): # Инициализация таблицы
@@ -31,23 +30,24 @@ def init_table(): # Инициализация таблицы
             WEEK INT[]);''') 
     print("Successfully created table Schedule")
 
-def clear_table(): # Отчистка таблицы
+def clear_table(cur): # Отчистка таблицы
     cur.execute('DELETE FROM SCHEDULE *')
     print("Successfully cleared table Schedule")
 
-def delete_table(): # Удаление таблицы
+def delete_table(cur): # Удаление таблицы
     cur.execute('DROP TABLE SCHEDULE')
     print("Successfully deleted table Schedule")
 
-def end(): # Закрытие соединения
+def end(con): # Закрытие соединения
     con.commit()
     con.close()
 
 
 if __name__ == "__main__":
-    connect()
-    clear_table()
+    con = connect()
+    cur = cursor(con)
+    clear_table(cur)
     # init_table()
 
     # delete_table()
-    end()
+    end(con)
