@@ -136,7 +136,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             finally:
                 return (lesson, typ, audit, order, even, week)
 
-        find = re.match(r"([\d\, \-]+)н\.", lesson) # 12,15 н.
+        find = re.match(r"([\d\, \-\/н]+)н\.?", lesson) # 12,15 н.
         if find != None:
             try:
                 f = re.findall(r"(\d{1,2})-(\d{1,2})", find.group(1))
@@ -156,26 +156,38 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
                 week = arr
                 week.sort()
                 return (lesson, typ, audit, order, even, week)
-        # find = re.match(r"([\d\, ])н\.", lesson) # 12,15 н.
-        # if find != None:
-        #     # try:
-        #     #     f = re.findall(r"(\d{1,2})-(\d{1,2})", find.group(1))
-        #     #     for pair in f:
-        #     #         for i in range(int(pair[0]), int(pair[1]) + 1):
-        #     #             arr.append(i)
-        #     # except:
-        #     #     pass
-        #     try:
-        #         f = re.findall(r"\d{1,2}", find.group(1))
-        #         for each in f:
-        #             if int(each) not in arr:
-        #                 arr.append(int(each))
-        #     except:
-        #         pass
-        #     finally:
-        #         week = arr
-        #         week.sort()
-        #         return (lesson, typ, audit, order, even, week)
+        
+        find = re.search(r"\(([\d\, \-\/н]+)н\.?\)", lesson) # (12,15 н.)
+        if find != None:
+            try:
+                f = re.findall(r"(\d{1,2})-(\d{1,2})", find.group(1))
+                for pair in f:
+                    for i in range(int(pair[0]), int(pair[1]) + 1):
+                        arr.append(i)
+            except:
+                pass
+            try:
+                f = re.findall(r"\d{1,2}", find.group(1))
+                for each in f:
+                    if int(each) not in arr:
+                        arr.append(int(each))
+            except:
+                pass
+            finally:
+                week = arr
+                week.sort()
+                return (lesson, typ, audit, order, even, week)
+
+        find = re.search(r"\(кр. ([\d\, ]+)н\.\)", lesson) # (кр. 12,15 н.) 
+        if find != None:
+            try:
+                find = re.findall(r"\d{1,2}", find.group(1))
+                for each in find:
+                    week.remove(int(each))
+            except:
+                pass
+            finally:
+                return (lesson, typ, audit, order, even, week)
         return day_lessons # Ничего не нашли
 
     def _recurparser(line):
@@ -288,8 +300,8 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
                 obj = [lesson, typ, audit, int(order), eo, week.copy()] # Объединяем все в один кортеж
                 
                 obj_arr = _twiceschedule(obj)
-                for each in obj_arr:
-                    each = _weekslicer(each)
+                for i in range(len(obj_arr)):
+                    obj_arr[i] = _weekslicer(obj_arr[i])
 
                 schedule.extend(obj_arr) 
                 evenodd += 1
@@ -319,8 +331,8 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             obj = [lesson, typ, audit, int(order), eo, week.copy()] # Объединяем все в один кортеж
             
             obj_arr = _twiceschedule(obj)
-            for each in obj_arr:
-                each = _weekslicer(each)
+            for i in range(len(obj_arr)):
+                obj_arr[i] = _weekslicer(obj_arr[i])
 
             schedule.extend(obj_arr) 
             evenodd += 1
