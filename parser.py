@@ -5,16 +5,21 @@ import requests
 import os
 import psycopg2
 
+import tablemanager as tm
+
+con = None
+cur = None
+
 
 block_tags = [   # Список тегов, которые не будут обрабатыватся
-        "Колледж",   # Расписание колледжа
-        "Экз",       # Расписание экзаменов
-        "сессия",    # Расписание экзаменов
-        "З",         # Заочники
-        "заоч",      # Заочники 
-        "О-З"        # Очно-заочники
-              
-    ]
+    "Колледж",   # Расписание колледжа
+    "Экз",       # Расписание экзаменов
+    "сессия",    # Расписание экзаменов
+    "З",         # Заочники
+    "заоч",      # Заочники 
+    "О-З"        # Очно-заочники
+]
+
 special_tags = [ # Теги, для которых предусмотрена специальная обработка
     "Маг",       # Магистратура
     "маг"        # Магистратура
@@ -86,12 +91,6 @@ def get_xlfiles(filename="links.txt"):
 
 
 
-
-
-
-
-
-
 def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons=[]):
     '''
     Вытаскивает из xl-таблиц все группы и их расписание. Возвращает словарь dic[group]= [[Monday], [Tuesday], [Wednesday]...];\n
@@ -126,7 +125,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
         if lesson == "":
             return day_lessons
         arr = []
-        find = re.match(r"кр. (.*) н.", lesson) # кр. 12,15 н. 
+        find = re.match(r"кр. ([\d\, ]+) н.", lesson) # кр. 12,15 н. 
         if find != None:
             try:
                 find = re.findall(r"\d{1,2}", find.group(1))
@@ -137,7 +136,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             finally:
                 return (lesson, typ, audit, order, even, week)
 
-        find = re.match(r"(.*) н.", lesson) # 12,15 н.
+        find = re.match(r"([\d\, \-]+)н\.", lesson) # 12,15 н.
         if find != None:
             try:
                 f = re.findall(r"(\d{1,2})-(\d{1,2})", find.group(1))
@@ -157,7 +156,26 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
                 week = arr
                 week.sort()
                 return (lesson, typ, audit, order, even, week)
-            
+        # find = re.match(r"([\d\, ])н\.", lesson) # 12,15 н.
+        # if find != None:
+        #     # try:
+        #     #     f = re.findall(r"(\d{1,2})-(\d{1,2})", find.group(1))
+        #     #     for pair in f:
+        #     #         for i in range(int(pair[0]), int(pair[1]) + 1):
+        #     #             arr.append(i)
+        #     # except:
+        #     #     pass
+        #     try:
+        #         f = re.findall(r"\d{1,2}", find.group(1))
+        #         for each in f:
+        #             if int(each) not in arr:
+        #                 arr.append(int(each))
+        #     except:
+        #         pass
+        #     finally:
+        #         week = arr
+        #         week.sort()
+        #         return (lesson, typ, audit, order, even, week)
         return day_lessons # Ничего не нашли
 
     def _recurparser(line):
@@ -389,24 +407,11 @@ def convert_in_postgres(group_schedule, connect):
                     '''
                 )
                 ident += 1
-                connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
-
-
-
-
-
-
-
-
-
-
-
-
+                # connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
 
 
 if __name__ == "__main__":
 
-    
     link_MireaShedule = "https://www.mirea.ru/schedule/"
     links_file = "links.txt"
 
@@ -414,15 +419,9 @@ if __name__ == "__main__":
     # get_xlfiles(links_file)
 
     
-    full_groups_shedule = {}
+    # full_groups_shedule = {}
 
-    con = psycopg2.connect(
-        database="schedule", 
-        user="postgres", 
-        password="superpassword", 
-        host="localhost", 
-        port="5432"
-        )
+    con = tm.connect()
     ident = 0
 
     for filename in os.listdir("./xl"):
