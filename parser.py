@@ -4,33 +4,123 @@ import re
 import requests
 import os
 import psycopg2
+from datetime import *
 
 import tablemanager as tm
-
-con = None
-cur = None
+import settings.config as cfg
 
 
-block_tags = [   # Список тегов, которые не будут обрабатыватся
-    "Колледж",   # Расписание колледжа
-    "Экз",       # Расписание экзаменов
-    "сессия",    # Расписание экзаменов
-    "З",         # Заочники
-    "заоч",      # Заочники 
-    "О-З"        # Очно-заочники
-]
+_ident = 0
 
-special_tags = [ # Теги, для которых предусмотрена специальная обработка
-    "Маг",       # Магистратура
-    "маг"        # Магистратура
-]
+def update_MireaSchedule():
+    '''
+    Обновить всю базу расписания МИРЭА (перед обновлением стирает всю базу до нуля). Генерирует xlsx, json файлы, а также создает
+    links.txt - список всех ссылок с сайта. Функция очень время затратная, поэтому лучше включать её только вручную, когда это необходимо. \n
+    Функция сначала обрабатывает все файлы, и только после окончания работы загружает их в базу.  
+    '''
+    tm.clear_Schedule()
 
-substitute_lessons = {
-    r"Физическая культура и спорт" : "Физ-ра",
-    r"Иностранный язык" : "Ин.яз."
-}
+    get_links(cfg.link_MireaShedule, cfg.links_file)
+    get_xlfiles(cfg.links_file)
 
-def check_tags(tags, line):
+    # full_groups_shedule = {}
+
+    con = tm.connect()
+
+    for filename in os.listdir("./xl"):
+        # * Полный список групп с расписанием * #
+        groups_shedule = parse_xlfiles(filename, cfg.block_tags, cfg.special_tags, cfg.substitute_lessons)
+        if groups_shedule == None:
+            continue
+
+        # * Записываем расписание в джсон * #
+        convert_in_json(groups_shedule, filename[:-5] + ".json")
+        convert_in_postgres(groups_shedule, con)
+
+        print("filename=" + filename, "Complete!", sep=" ")
+
+        # full_groups_shedule = {**groups_shedule, **full_groups_shedule}                   # Можно сохранять полную базу, которую можно слить в один ОГРОМНЫЙ файл
+        groups_shedule.clear() 
+
+
+    # with open("./json/AllInOne.json", "w", encoding="utf-8") as f:                        # Создание одной большой базы
+    #     json.dump(full_groups_shedule, f, sort_keys=True, indent=4, ensure_ascii=False)
+    
+    tm.end(con)
+    print("Database closed and commited successfully")
+
+def get_TodaySchedule(today, group):
+    '''
+    Возвращает расписание [список] группы на сегодня. Возвращает None, если вызов произошел в воскресенье.
+    '''
+    con = tm.connect()
+    cur = tm.cursor(con)
+
+    ZeroDay = date(cfg.semestr_start[0], cfg.semestr_start[1], cfg.semestr_start[2])
+    delta_day = abs((today - ZeroDay).days)
+    
+    week_number = delta_day // 7 + 1
+    even_week = _get_even_week(week_number)
+    week_day = _get_week_day(today.weekday())
+    if week_day == "SUNDAY":
+        return None
+    
+    cur.execute(
+        f'''
+        SELECT * FROM SCHEDULE
+        WHERE grp='{group}' and day='{week_day}' and even='{even_week}'
+        ORDER BY id;
+        '''
+    )
+
+
+    result = []
+    for answer in cur:
+        weeks_av = answer[8]
+        if week_number in weeks_av:
+            result.append(answer)
+
+    tm.end(con)
+    return result
+
+def get_TomorrowSchedule(today, group):
+    '''
+    Возвращает расписание [список] группы на сегодня. Возвращает None, если вызов произошел в воскресенье.
+    '''
+    td = date(today.year, today.month, today.day + 1)
+    return get_TodaySchedule(td, group)
+
+def get_WeekSchedule(today, group):
+    '''
+    Возвращает расписание [список] группы на неделю.
+    '''
+    con = tm.connect()
+    cur = tm.cursor(con)
+
+    ZeroDay = date(cfg.semestr_start[0], cfg.semestr_start[1], cfg.semestr_start[2])
+    delta_day = abs((today - ZeroDay).days)
+    
+    week_number = delta_day // 7 + 1
+    even_week = _get_even_week(week_number)
+
+    cur.execute(
+        f'''
+        SELECT * FROM SCHEDULE
+        WHERE grp='{group}' and even='{even_week}'
+        ORDER BY id;
+        '''
+    )
+
+    result = []
+    for answer in cur:
+        weeks_av = answer[8]
+        if week_number in weeks_av:
+            result.append(answer)
+
+    tm.end(con)
+    return result
+
+def _check_tags(tags, line):
     '''
     Поиск в строке одного из списка тегов. В случае нахождения тега, возвращает строку с этим тегом,
     и None в противном случае. Возвращает первый найденый тег.
@@ -40,9 +130,27 @@ def check_tags(tags, line):
             return i
     return None
 
+def _get_week_day(day_number):
+    if day_number == 0:
+        return "MONDAY"
+    elif day_number == 1:
+        return "TUESDAY"
+    elif day_number == 2:
+        return "WEDNESDAY"
+    elif day_number == 3:
+        return "THURSDAY"
+    elif day_number == 4:
+        return "FRIDAY"
+    elif day_number == 5:
+        return "SATURDAY"
+    elif day_number == 6:
+        return "SUNDAY"
 
-
-
+def _get_even_week(week_number):
+    if week_number % 2 == 0:
+        return "EVEN"
+    else:
+        return "ODD"
 
 def get_links(link, filename="links.txt"):
     '''
@@ -50,19 +158,14 @@ def get_links(link, filename="links.txt"):
     и записывает в файл links.txt.
     '''
     with open(filename, "w", encoding='utf-8') as f:
-        template_link = r"(https:\/\/.*\/(.*.xlsx))"
         res = requests.get(link)
         print("LINK=" + link, "CODE="+ str(res.status_code), sep=" ")
         if res.status_code == 404:
             print("Something went wrong!")
         else:
-            find = re.findall(template_link, res.text)
+            find = re.findall(r"(https:\/\/.*\/(.*.xlsx))", res.text)
             for link in find:
                 f.write(link[0] + "\n")
-
-
-
-
 
 def get_xlfiles(filename="links.txt"):
     '''
@@ -86,17 +189,11 @@ def get_xlfiles(filename="links.txt"):
                 with open("./xl/" + filename[0], "wb") as f:
                     f.write(res.content)
 
-
-
-
-
-
 def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons=[]):
     '''
     Вытаскивает из xl-таблиц все группы и их расписание. Возвращает словарь dic[group]= [[Monday], [Tuesday], [Wednesday]...];\n
     Возвращает None если имя файла имеет block_tags. Также имеет обработчики для special_tags. Если special_tag не найден, 
-    то используется стандартный обработчик. Все предметы заменяются на \n
-    !!! Функция очень времязатратная, не рекомендуется вызывать её при каждом запросе к базе !!!
+    то используется стандартный обработчик.
     '''
 
 
@@ -341,11 +438,9 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
 
     
 
-
-
     # --- Основная часть функции --- #
 
-    if check_tags(block_tags, xlfilename) != None:
+    if _check_tags(cfg.block_tags, xlfilename) != None:
         return None
 
     groups_shedule = {}    
@@ -355,7 +450,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
     sheet = rb.sheet_by_index(0)
     
     col = 0
-    now_tag = check_tags(special_tags, xlfilename)
+    now_tag = _check_tags(special_tags, xlfilename)
     
     # * Крутим все группы, заполняем расписание * #
     for now_val in sheet.row_values(1):
@@ -376,10 +471,6 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
 
     return groups_shedule
 
-
-
-
-
 def convert_in_json(data, filename):
     '''
     Преобразует python-данные в формат json.
@@ -391,12 +482,12 @@ def convert_in_json(data, filename):
     with open("./json/" + filename, "w", encoding="utf-8") as f:
         json.dump(data, f, sort_keys=True, indent=4, ensure_ascii=False)  
 
-def convert_in_postgres(group_schedule, connect):
+def convert_in_postgres(group_schedule, con):
     '''
-    Записывает в базу PostgreSQL расписание группы
+    Записывает в базу PostgreSQL расписание группы. Сначала 
     '''
-    global ident
-    cursor = connect.cursor()
+    global _ident
+    cursor = con.cursor()
     days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
     days_iter = iter(days)
 
@@ -411,55 +502,27 @@ def convert_in_postgres(group_schedule, connect):
                 strweek = "{" + ",".join(strweek) + "}"
                 
                 
-                idn = str(ident)
+                idn = str(_ident)
                 cursor.execute(
                     f'''
                     INSERT INTO SCHEDULE (ID,GRP,DAY,LESSON,TYPE,AUDIT,ORD,EVEN,WEEK)
                     VALUES({idn},'{group}','{day_now}','{lesson}','{typ}','{audit}','{order}','{even}','{strweek}')
                     '''
                 )
-                ident += 1
+                _ident += 1
                 # connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
+    
+    
 
 
 if __name__ == "__main__":
+    _ident = 0
 
-    link_MireaShedule = "https://www.mirea.ru/schedule/"
-    links_file = "links.txt"
-
-    # get_links(link_MireaShedule, links_file)
-    # get_xlfiles(links_file)
-
+    update_MireaSchedule()
+    today = date.today()
+    print(today)
     
-    # full_groups_shedule = {}
-
-    con = tm.connect()
-    ident = 0
-
-    for filename in os.listdir("./xl"):
-        # * Полный список групп с расписанием * #
-        groups_shedule = parse_xlfiles(filename, block_tags, special_tags, substitute_lessons)
-        if groups_shedule == None:
-            continue
-
-        # * Записываем расписание в джсон * #
-        convert_in_json(groups_shedule, filename[:-5] + ".json")
-        convert_in_postgres(groups_shedule, con)
-
-        print("filename=" + filename, "Complete!", sep=" ")
-
-        # full_groups_shedule = {**groups_shedule, **full_groups_shedule}                   # Можно сохранять полную базу, которую можно слить в один ОГРОМНЫЙ файл
-        groups_shedule.clear() 
-
-
-
-    # with open("./json/AllInOne.json", "w", encoding="utf-8") as f:                        # Создание одной большой базы
-    #     json.dump(full_groups_shedule, f, sort_keys=True, indent=4, ensure_ascii=False)
-
-
-    con.commit()
-    con.close()
-
-
+    schedule = get_WeekSchedule(today, 'ККСО-01-19')
+    print(schedule)
     pass
     
