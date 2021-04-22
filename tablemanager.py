@@ -26,13 +26,15 @@ def _init_table(cur): # Инициализация таблицы
     '''
     Создать таблицу Schedule.
     '''
-    cur.execute('''CREATE TABLE SCHEDULE  
+    cur.execute('''CREATE TABLE IF NOT EXISTS SCHEDULE  
             (ID INT PRIMARY KEY NOT NULL,
             GRP TEXT,
             DAY TEXT,
             LESSON TEXT,
             TYPE TEXT,
             AUDIT TEXT,
+            START_TIME TEXT,
+            END_TIME TEXT,
             ORD INT,
             EVEN TEXT,
             WEEK INT[]);''') 
@@ -78,5 +80,23 @@ def rebuild_Schedule():
     _init_table(cur)
     end(con)
 
+def create_Schedule():
+    con = connect()
+    cur = cursor(con)
+    _init_table(cur)
+    end(con)
+
+def select_group(cursor, group):
+    query = """
+        SELECT * FROM SCHEDULE
+        WHERE grp=%s
+        ORDER BY id;
+    """
+    cursor.execute(query, (group, ))
+    return cursor.fetchall()
+
+
 if __name__ == "__main__":
-    clear_Schedule()
+    create_Schedule()
+    # clear_Schedule()
+
