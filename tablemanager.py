@@ -28,15 +28,15 @@ def _init_table(cur): # Инициализация таблицы
     '''
     cur.execute('''CREATE TABLE IF NOT EXISTS SCHEDULE  
             (ID INT PRIMARY KEY NOT NULL,
-            GRP TEXT,
-            DAY TEXT,
-            LESSON TEXT,
-            TYPE TEXT,
-            AUDIT TEXT,
-            START_TIME TEXT,
-            END_TIME TEXT,
+            GRP VARCHAR(16),
+            DAY VARCHAR(16),
+            LESSON VARCHAR(256),
+            TYPE VARCHAR(32),
+            AUDIT VARCHAR(32),
+            START_TIME VARCHAR(8),
+            END_TIME VARCHAR(8),
             ORD INT,
-            EVEN TEXT,
+            EVEN VARCHAR(4),
             WEEK INT[]);''') 
     print("Successfully created table Schedule")
 
