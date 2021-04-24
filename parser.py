@@ -20,8 +20,8 @@ def update_MireaSchedule():
     '''
     tm.clear_Schedule()
 
-    # get_links(cfg.link_MireaShedule, cfg.links_file)
-    # get_xlfiles(cfg.links_file)
+    get_links(cfg.link_MireaShedule, cfg.links_file)
+    get_xlfiles(cfg.links_file)
 
     # full_groups_shedule = {}
 
