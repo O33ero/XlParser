@@ -18,13 +18,13 @@ def update_MireaSchedule():
     links.txt - список всех ссылок с сайта. Функция очень время затратная, поэтому лучше включать её только вручную, когда это необходимо. \n
     Функция сначала обрабатывает все файлы, и только после окончания работы загружает их в базу.  
     '''
-    tm.clear_Schedule()
 
-    get_links(cfg.link_MireaShedule, cfg.links_file)
-    get_xlfiles(cfg.links_file)
+    # get_links(cfg.link_MireaShedule, cfg.links_file)
+    # get_xlfiles(cfg.links_file)
 
     # full_groups_shedule = {}
 
+    tm.clear_Schedule()
     con = tm.connect()
 
     for filename in os.listdir("./xl"):
@@ -226,9 +226,11 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
         try:
             if mod == 0:
                 line = re.sub(r"\n", " ", line)
+                line = re.sub(r" {2,}", " ", line) # Удаление первого вхождение
+            line = line.rstrip()
             line = re.sub(r"\t", "", line)
-            line = re.sub(r" {2,}", " ", line)
             line = re.sub(r"\…+.*", "", line)
+            # line = re.sub(r" {2,}$", " ", line) # Удаление последнего вхождения
         except:
             pass
         return line
@@ -244,7 +246,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
         if lesson == "":
             return day_lessons
         arr = []
-        find = re.match(r"кр. ([\d\, ]+)[нeд]{0,3}\.?", lesson) # кр. 12,15 н. 
+        find = re.match(r"кр\.? ([\d\, ]+)[нeд]{0,3}\.?", lesson) # кр. 12,15 н. 
         if find != None:
             try:
                 find = re.findall(r"\d{1,2}", find.group(1))
@@ -255,7 +257,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             finally:
                 return (lesson, typ, audit, start_time, end_time, order, even, week)
 
-        find = re.match(r"([\d\, \-\/н]+)[нeд]{0,3}\.?", lesson) # 12,15 н.
+        find = re.match(r"([\d\, \-\/н(лк)(пр)]+)[нeд]{1,3}\.?", lesson) # 12,15 н.
         if find != None:
             try:
                 f = re.findall(r"(\d{1,2})[ ]*-[ ]*(\d{1,2})", find.group(1))
@@ -311,17 +313,18 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
 
     def _recurparser(line):
         try:
-            find = re.search(r"(.*)\n(.*)", line)
+            line = line.rstrip()
+            find = re.search(r"(.*)( {4,}|\n)(.*)", line)
         except:
             find = None
         result = []
 
         if find == None:
-            result.append(line)
+            result.append(_antidot(line, 0))
             return result
         else:
-            result.append(find.group(1))
-            result.extend(_recurparser(find.group(2)))
+            result.append(_antidot(find.group(1), 0))
+            result.extend(_recurparser(find.group(3)))
             return result
 
     def _twiceschedule(obj): # Обрабочкик двойных объектов на одном слоте
@@ -334,7 +337,8 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
         lesson_arr = _recurparser(lesson)
 
         if len(lesson_arr) == 1:
-            obj[2] = _antidot(obj[2], 0)
+            obj[2] = _antidot(obj[2],0)
+            obj[0] = _antidot(obj[0],0)
             new_objs.append(obj)
         else:
             typ_arr = _recurparser(typ)
@@ -376,7 +380,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             for i in range(len(day_lesson)):
                 lesson = day_lesson[i]
                 typ = type_lesson[i]
-                audit = audit_lesson[i] 
+                audit = audit_lesson[i]
                 time = next(time_iter)
                 if evenodd % 2 == 0:
                     eo = "EVEN"
@@ -402,7 +406,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             audit_lesson = sheet.col_values(col + 2, start_rowx=3 + 18 * k, end_rowx=21 + 18 * k) # Делаем срез аудиторий
 
             for i in range(len(day_lesson)):# Убираем плхие символы и т.д.
-                day_lesson[i] = _antidot(day_lesson[i])
+                day_lesson[i] = _antidot(day_lesson[i], 1)
                 day_lesson[i] = _substitute(day_lesson[i])
                 type_lesson[i] = _antidot(type_lesson[i])
                 audit_lesson[i] = _antidot(audit_lesson[i])
@@ -415,7 +419,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
             for i in range(len(day_lesson)):
                 lesson = day_lesson[i]
                 typ = type_lesson[i]
-                audit = audit_lesson[i] 
+                audit = audit_lesson[i]
                 time = next(time_iter)
                 if evenodd % 2 == 0:
                     eo = "EVEN"
@@ -438,7 +442,7 @@ def parse_xlfiles(xlfilename, block_tags=[], special_tags=[], substitute_lessons
         type_lesson = sheet.col_values(col, start_rowx=93, end_rowx=105)
         audit_lesson = sheet.col_values(col + 2, start_rowx=93, end_rowx=105)
         for i in range(len(day_lesson)): # Убираем плхие символы и т.д.
-            day_lesson[i] = _antidot(day_lesson[i])
+            day_lesson[i] = _antidot(day_lesson[i], 1)
             day_lesson[i] = _substitute(day_lesson[i])
             type_lesson[i] = _antidot(type_lesson[i])
             audit_lesson[i] = _antidot(audit_lesson[i])
@@ -561,7 +565,7 @@ def convert_in_postgres(group_schedule, con):
                     '''
                 )
                 _ident += 1
-                # connect.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
+                con.commit()  # Чтоб не ломать базу, лучше сначала все добавить в execute, а потом сделать commit
     
     
 
@@ -572,12 +576,10 @@ if __name__ == "__main__":
     update_MireaSchedule()
     today = date.today()
     print(today)
-    grp = 'ЭОМО-01-20'
+    grp = 'ЭСБО-01-19'
 
     if True:
         schedule = get_WeekSchedule(today, grp)
-        schedule = get_TodaySchedule(today, grp)
-        schedule = get_TomorrowSchedule(today, grp)
         print(schedule)
     else:
         pass
