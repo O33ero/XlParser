@@ -38,12 +38,26 @@ def _init_table(cur): # Инициализация таблицы
             ORD INT,
             EVEN VARCHAR(4),
             WEEK INT[]);''') 
-    print("Successfully created table Schedule")
+
+
+    cur.execute('''CREATE TABLE IF NOT EXISTS EXAMS  
+            (
+                ID INT PRIMARY KEY NOT NULL,
+                GRP VARCHAR(16),
+                DAY VARCHAR(16),
+                EXAM VARCHAR(256),
+                TYPE VARCHAR(64),
+                LECTOR VARCHAR (128),
+                TIME VARCHAR(16),
+                AUDIT VARCHAR(64));''') 
+    print("Successfully created table Schedule and Exams")
+
 
 def _clear_table(cur): # Отчистка таблицы
     '''
     Отчистка таблицы.
     '''
+    cur.execute('DELETE FROM EXAMS *')
     cur.execute('DELETE FROM SCHEDULE *')
     print("Successfully cleared table Schedule")
 
@@ -51,8 +65,9 @@ def _delete_table(cur): # Удаление таблицы
     '''
     Удалить таблицу.
     '''
+    cur.execute('DROP TABLE EXAMS')
     cur.execute('DROP TABLE SCHEDULE')
-    print("Successfully deleted table Schedule")
+    print("Successfully deleted table Schedule and Exams")
 
 def end(con): # Закрытие соединения
     '''
@@ -86,7 +101,7 @@ def create_Schedule():
     _init_table(cur)
     end(con)
 
-def select_group(cursor, group):
+def select_group_Schedule(cursor, group):
     query = """
         SELECT * FROM SCHEDULE
         WHERE grp=%s
@@ -95,8 +110,16 @@ def select_group(cursor, group):
     cursor.execute(query, (group, ))
     return cursor.fetchall()
 
+def select_group_Exams(cursor, group):
+    query = """
+        SELECT * FROM EXAMS
+        WHERE grp=%s
+        ORDER BY id;
+    """
+    cursor.execute(query, (group, ))
+    return cursor.fetchall()
 
 if __name__ == "__main__":
-    create_Schedule()
-    # clear_Schedule()
+    rebuild_Schedule()
+    clear_Schedule()
 
