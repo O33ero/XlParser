@@ -36,6 +36,7 @@ def update_MireaSchedule():
 
     tm.clear_Schedule()
     con = tm.connect()
+    
 
     for filename in os.listdir("./xl"):
         # * Полный список групп с расписанием * #
